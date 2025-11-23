@@ -1,7 +1,7 @@
 FROM alpine:latest
 
 # Install nginx for HTTP/WebSocket proxying
-RUN apk add --no-cache nginx netcat-openbsd
+RUN apk add --no-cache nginx netcat-openbsd wget
 
 # Create nginx directories
 RUN mkdir -p /var/log/nginx /var/cache/nginx /etc/nginx/conf.d
@@ -36,26 +36,26 @@ RUN echo '#!/bin/sh' > /start.sh && \
     echo '' >> /start.sh && \
     echo '    # Healthcheck endpoint' >> /start.sh && \
     echo '    server {' >> /start.sh && \
-    echo '        listen 0.0.0.0:$PORT;' >> /start.sh && \
+    echo '        listen 0.0.0.0:'"'"'$PORT'"'"';' >> /start.sh && \
     echo '        server_name _;' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '        location /health {' >> /start.sh && \
-    echo '            return 200 "healthy\n";' >> /start.sh && \
+    echo '            return 200 "healthy\\n";' >> /start.sh && \
     echo '            add_header Content-Type text/plain;' >> /start.sh && \
     echo '        }' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '        # Proxy all traffic to Neo4j Bolt port' >> /start.sh && \
     echo '        # Neo4j Bolt can handle both HTTP and WebSocket connections' >> /start.sh && \
     echo '        location / {' >> /start.sh && \
-    echo '            proxy_pass http://$TARGET;' >> /start.sh && \
+    echo '            proxy_pass http://'"'"'$TARGET'"'"';' >> /start.sh && \
     echo '            proxy_http_version 1.1;' >> /start.sh && \
-    echo '            proxy_set_header Host $host;' >> /start.sh && \
-    echo '            proxy_set_header X-Real-IP $remote_addr;' >> /start.sh && \
-    echo '            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /start.sh && \
-    echo '            proxy_set_header X-Forwarded-Proto $scheme;' >> /start.sh && \
+    echo '            proxy_set_header Host \$host;' >> /start.sh && \
+    echo '            proxy_set_header X-Real-IP \$remote_addr;' >> /start.sh && \
+    echo '            proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;' >> /start.sh && \
+    echo '            proxy_set_header X-Forwarded-Proto \$scheme;' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '            # WebSocket support for Neo4j Browser' >> /start.sh && \
-    echo '            proxy_set_header Upgrade $http_upgrade;' >> /start.sh && \
+    echo '            proxy_set_header Upgrade \$http_upgrade;' >> /start.sh && \
     echo '            proxy_set_header Connection "upgrade";' >> /start.sh && \
     echo '' >> /start.sh && \
     echo '            # Timeouts' >> /start.sh && \
