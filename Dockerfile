@@ -1,68 +1,47 @@
 FROM alpine:latest
 
-# Install nginx for HTTP/WebSocket proxying
-RUN apk add --no-cache nginx netcat-openbsd wget
+# Install HAProxy for advanced TCP/HTTP/WebSocket proxying
+RUN apk add --no-cache haproxy netcat-openbsd wget
 
-# Create nginx directories
-RUN mkdir -p /var/log/nginx /var/cache/nginx /etc/nginx/conf.d
+# Create haproxy directories
+RUN mkdir -p /var/lib/haproxy /run/haproxy
 
 # Expose port 80 (Railway will bind domain to this port)
-# PORT environment variable will be set by Railway (defaults to 80)
 EXPOSE 80
 
-# Healthcheck - simple HTTP check
+# Healthcheck - simple TCP check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD sh -c 'PORT=${PORT:-80} && wget --quiet --tries=1 --spider http://localhost:$PORT/health || exit 1'
+  CMD sh -c 'PORT=${PORT:-80} && nc -z localhost $PORT || exit 1'
 
-# Create startup script that generates nginx config dynamically
-# Use sed to substitute PORT and TARGET variables after generating config
+# Create startup script that generates HAProxy config dynamically
 RUN echo '#!/bin/sh' > /start.sh && \
     echo 'set -e' >> /start.sh && \
     echo 'PORT=${PORT:-80}' >> /start.sh && \
     echo 'TARGET=${NEO4J_BOLT_HOST:-neo4j-deploy.railway.internal:7687}' >> /start.sh && \
-    echo 'echo "[$(date)] Starting Nginx on port $PORT, proxying to $TARGET"' >> /start.sh && \
-    echo 'cat > /tmp/nginx.conf.template <<'\''ENDOFFILE'\''' >> /start.sh && \
-    echo 'worker_processes auto;' >> /start.sh && \
-    echo 'error_log /var/log/nginx/error.log warn;' >> /start.sh && \
-    echo 'pid /var/run/nginx.pid;' >> /start.sh && \
+    echo 'echo "[$(date)] Starting HAProxy on port $PORT, proxying to $TARGET"' >> /start.sh && \
+    echo 'cat > /etc/haproxy/haproxy.cfg <<'\''ENDOFFILE'\''' >> /start.sh && \
+    echo 'global' >> /start.sh && \
+    echo '    log stdout format raw local0' >> /start.sh && \
+    echo '    daemon' >> /start.sh && \
     echo '' >> /start.sh && \
-    echo 'events {' >> /start.sh && \
-    echo '    worker_connections 1024;' >> /start.sh && \
-    echo '}' >> /start.sh && \
+    echo 'defaults' >> /start.sh && \
+    echo '    mode tcp' >> /start.sh && \
+    echo '    log global' >> /start.sh && \
+    echo '    option tcplog' >> /start.sh && \
+    echo '    timeout connect 10s' >> /start.sh && \
+    echo '    timeout client 1m' >> /start.sh && \
+    echo '    timeout server 1m' >> /start.sh && \
     echo '' >> /start.sh && \
-    echo 'http {' >> /start.sh && \
-    echo '    include /etc/nginx/mime.types;' >> /start.sh && \
-    echo '    default_type application/octet-stream;' >> /start.sh && \
-    echo '    access_log /var/log/nginx/access.log;' >> /start.sh && \
+    echo 'frontend neo4j_bolt_frontend' >> /start.sh && \
+    echo '    bind *:__PORT__' >> /start.sh && \
+    echo '    default_backend neo4j_bolt_backend' >> /start.sh && \
     echo '' >> /start.sh && \
-    echo '    server {' >> /start.sh && \
-    echo '        listen 0.0.0.0:__PORT__;' >> /start.sh && \
-    echo '        server_name _;' >> /start.sh && \
-    echo '' >> /start.sh && \
-    echo '        location /health {' >> /start.sh && \
-    echo '            return 200 "healthy\\n";' >> /start.sh && \
-    echo '            add_header Content-Type text/plain;' >> /start.sh && \
-    echo '        }' >> /start.sh && \
-    echo '' >> /start.sh && \
-    echo '        location / {' >> /start.sh && \
-    echo '            proxy_pass http://__TARGET__;' >> /start.sh && \
-    echo '            proxy_http_version 1.1;' >> /start.sh && \
-    echo '            proxy_set_header Host $host;' >> /start.sh && \
-    echo '            proxy_set_header X-Real-IP $remote_addr;' >> /start.sh && \
-    echo '            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' >> /start.sh && \
-    echo '            proxy_set_header X-Forwarded-Proto $scheme;' >> /start.sh && \
-    echo '            proxy_set_header Upgrade $http_upgrade;' >> /start.sh && \
-    echo '            proxy_set_header Connection "upgrade";' >> /start.sh && \
-    echo '            proxy_connect_timeout 60s;' >> /start.sh && \
-    echo '            proxy_send_timeout 60s;' >> /start.sh && \
-    echo '            proxy_read_timeout 60s;' >> /start.sh && \
-    echo '        }' >> /start.sh && \
-    echo '    }' >> /start.sh && \
-    echo '}' >> /start.sh && \
+    echo 'backend neo4j_bolt_backend' >> /start.sh && \
+    echo '    server neo4j __TARGET__ check' >> /start.sh && \
     echo 'ENDOFFILE' >> /start.sh && \
-    echo 'sed "s|__PORT__|$PORT|g; s|__TARGET__|$TARGET|g" /tmp/nginx.conf.template > /etc/nginx/nginx.conf' >> /start.sh && \
-    echo 'nginx -t' >> /start.sh && \
-    echo 'exec nginx -g "daemon off;"' >> /start.sh && \
+    echo 'sed "s|__PORT__|$PORT|g; s|__TARGET__|$TARGET|g" /etc/haproxy/haproxy.cfg > /tmp/haproxy.cfg && mv /tmp/haproxy.cfg /etc/haproxy/haproxy.cfg' >> /start.sh && \
+    echo 'haproxy -f /etc/haproxy/haproxy.cfg -c' >> /start.sh && \
+    echo 'exec haproxy -f /etc/haproxy/haproxy.cfg -db' >> /start.sh && \
     chmod +x /start.sh
 
 CMD ["/start.sh"]
