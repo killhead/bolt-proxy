@@ -14,5 +14,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
 # Use socat to proxy TCP traffic from PORT to Neo4j Bolt port
 # NEO4J_BOLT_HOST will be set to neo4j-deploy.railway.internal:7687
 # PORT will be set by Railway (defaults to 80)
-CMD sh -c "PORT=\${PORT:-80} && socat TCP-LISTEN:\$PORT,reuseaddr,fork TCP:\${NEO4J_BOLT_HOST:-neo4j-deploy.railway.internal:7687}"
+# Add verbose logging to see all traffic
+CMD sh -c "PORT=\${PORT:-80} && TARGET=\${NEO4J_BOLT_HOST:-neo4j-deploy.railway.internal:7687} && echo \"[$(date)] Starting socat: listening on port \$PORT, proxying to \$TARGET\" && exec socat -v -d -d TCP-LISTEN:\$PORT,reuseaddr,fork TCP:\$TARGET"
 
